@@ -407,7 +407,7 @@ function App() {
   return (
     <div className="chat-container">
       <header>
-        <h1>ChatYa Public Room</h1>
+      <h1>Israeli-chat Public Room</h1>
         <form className="nickname-form" onSubmit={setNewNickname}>
           <input value={inputName} onChange={handleNameChange} maxLength={16} />
           <button type="submit">Set Nickname</button>
