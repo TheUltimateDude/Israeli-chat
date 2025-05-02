@@ -61,6 +61,7 @@ function ContactsList({contacts, users, nickname, toggleContact}) {
   );
 }
 
+
 function App() {
   const [socket, setSocket] = useState(null);
   const [nickname, setNickname] = useState('');
@@ -85,6 +86,9 @@ function App() {
       return [];
     }
   });
+
+  const [typingUsers, setTypingUsers] = useState([]);
+  const typingTimeouts = useRef({});
 
   useEffect(() => {
     localStorage.setItem('chatya-contacts', JSON.stringify(contacts));
@@ -127,6 +131,19 @@ function App() {
       // msg: {from, text, timestamp}
       setMessages((m) => [...m, { user: msg.from, text: msg.text, timestamp: msg.timestamp, private: true }]);
     });
+    s.on('typing', (user) => {
+      setTypingUsers((current) => {
+        if (!current.includes(user)) return [...current, user];
+        return current;
+      });
+
+      if (typingTimeouts.current[user]) {
+        clearTimeout(typingTimeouts.current[user]);
+      }
+      typingTimeouts.current[user] = setTimeout(() => {
+        setTypingUsers((current) => current.filter((u) => u !== user));
+      }, 3000);
+    });
 
     s.emit('join-room', 'Lobby');
     return () => {
@@ -137,6 +154,20 @@ function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const typingTimeout = useRef(null);
+  const emitTyping = () => {
+    if (!socket) return;
+    socket.emit('typing');
+  };
+
+  const onInputChange = (e) => {
+    setInput(e.target.value);
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      emitTyping();
+    }, 500);
+  };
 
   const sendMessage = (e) => {
     e.preventDefault();
@@ -212,7 +243,6 @@ function App() {
     e.target.value = null;
   };
 
-
   function renderMessage(m, i) {
     const fileLinkMatch = m.text.match(/\[([^\]]+)\]\(([^)]+)\)/);
     const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
@@ -254,6 +284,17 @@ function App() {
     return (
       <div key={i} className={m.user === nickname ? 'msg me' : 'msg'}>
         <b>{m.user}</b> <span className="message-time">[{time}]</span> {privateTag}: {m.text}
+      </div>
+    );
+  }
+
+  function TypingIndicator({ typingUsers, nickname }) {
+    const otherUsers = typingUsers.filter((u) => u !== nickname);
+    if (otherUsers.length === 0) return null;
+
+    return (
+      <div className="typing-indicator">
+        {otherUsers.join(', ')} {otherUsers.length === 1 ? 'is' : 'are'} typing...
       </div>
     );
   }
@@ -311,7 +352,9 @@ function App() {
           addEmoji={addEmoji}
           handleFileChange={handleFileChange}
           uploading={uploading}
+          onInputChange={onInputChange}
         />
+        <TypingIndicator typingUsers={typingUsers} nickname={nickname} />
       </div>
       <style>{`
         .private-tag {
@@ -319,69 +362,105 @@ function App() {
           font-weight: 600;
           margin-left: 4px;
         }
+        .typing-indicator {
+          font-style: italic;
+          color: #666;
+          font-size: 0.875em;
+          margin: 4px 0;
+        }
       `}</style>
     </div>
   );
 }
 
-function MessagesSection({
-  messages,
-  nickname,
-  renderMessage,
-  showEmoji,
-  setShowEmoji,
-  input,
-  setInput,
-  sendMessage,
-  addEmoji,
-  handleFileChange,
-  uploading,
-}) {
-  const messagesEndRef = useRef(null);
+// Decompose MessagesSection into MessageList and MessageInput components
 
+function MessageList({ messages, nickname, renderMessage }) {
+  const messagesEndRef = useRef(null);
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+  return (
+    <div className="messages">
+      {messages.map((m, i) => renderMessage(m, i))}
+      <div ref={messagesEndRef} />
+    </div>
+  );
+}
 
+function MessageInput({
+  input,
+  setInput,
+  sendMessage,
+  showEmoji,
+  setShowEmoji,
+  addEmoji,
+  handleFileChange,
+  uploading,
+  inputRef
+}) {
+  return (
+    <form onSubmit={sendMessage} className="message-form" style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setShowEmoji((e) => !e)}
+        style={{ fontSize: 20, marginRight: 4 }}
+        aria-label="Show emoji picker"
+      >
+        😃
+      </button>
+      {showEmoji && (
+        <div style={{ position: 'absolute', bottom: 64, left: 30, zIndex: 1000 }}>
+          <Picker data={data} onEmojiSelect={addEmoji} />
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Type your message here"
+        maxLength={256}
+        autoComplete="off"
+      />
+      <label
+        htmlFor="file-upload"
+        className="file-upload-label"
+        style={{ cursor: 'pointer', marginLeft: 8 }}
+        title="Upload file"
+      >
+        📎
+      </label>
+      <input
+        id="file-upload"
+        type="file"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+        disabled={uploading}
+      />
+      <button type="submit" disabled={uploading}>
+        {uploading ? 'Uploading...' : 'Send'}
+      </button>
+    </form>
+  );
+}
+
+// Update MessagesSection to use the two components
+function MessagesSection(props) {
+  const inputRef = useRef(null);
   return (
     <main className="messages-section">
-      <div className="messages">
-        {messages.map((m, i) => renderMessage(m, i))}
-        <div ref={messagesEndRef} />
-      </div>
-      <form onSubmit={sendMessage} className="message-form" style={{ position: 'relative' }}>
-        <button
-          type="button"
-          onClick={() => setShowEmoji((e) => !e)}
-          style={{ fontSize: 20, marginRight: 4 }}
-          aria-label="Show emoji picker"
-        >
-          😃
-        </button>
-        {showEmoji && (
-          <div style={{ position: 'absolute', bottom: 64, left: 30, zIndex: 1000 }}>
-            <Picker data={data} onEmojiSelect={addEmoji} />
-          </div>
-        )}
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={`Message #${nickname}`}
-          maxLength={256}
-        />
-        <label
-          htmlFor="file-upload"
-          className="file-upload-label"
-          style={{ cursor: 'pointer', marginLeft: 8 }}
-          title="Upload file"
-        >
-          📎
-        </label>
-        <input id="file-upload" type="file" style={{ display: 'none' }} onChange={handleFileChange} disabled={uploading} />
-        <button type="submit" disabled={uploading}>
-          {uploading ? 'Uploading...' : 'Send'}
-        </button>
-      </form>
+      <MessageList messages={props.messages} nickname={props.nickname} renderMessage={props.renderMessage} />
+      <MessageInput
+        input={props.input}
+        setInput={props.setInput}
+        sendMessage={props.sendMessage}
+        showEmoji={props.showEmoji}
+        setShowEmoji={props.setShowEmoji}
+        addEmoji={props.addEmoji}
+        handleFileChange={props.handleFileChange}
+        uploading={props.uploading}
+        inputRef={inputRef}
+      />
     </main>
   );
 }
