@@ -17,8 +17,69 @@ const reverseImageSearch = url => {
   window.open(googleSearch, '_blank', 'noopener');
 };
 
+function RoomList({ rooms, room, creatingRoom, newRoom, setNewRoom, setCreatingRoom, joinRoom, handleCreateRoom, roomError }) {
+  const isInvalid = !newRoom.trim() || rooms.includes(newRoom.trim());
 
-
+  return (
+    <aside className="sidebar room-list">
+      <div className="room-header">
+        <span>Rooms</span>
+        {!creatingRoom && (
+          <button title="Create Room" onClick={() => setCreatingRoom(true)} className="create-room-button">
+            ＋
+          </button>
+        )}
+      </div>
+      {creatingRoom && (
+        <form onSubmit={handleCreateRoom} className="create-room-form">
+          <input
+            value={newRoom}
+            autoFocus
+            maxLength={24}
+            onChange={(e) => {
+              setNewRoom(e.target.value);
+              if (roomError) roomError('');
+            }}
+            placeholder="New room name"
+            className="create-room-input"
+            aria-invalid={!!roomError}
+            aria-describedby="create-room-error"
+          />
+          <button type="submit" disabled={isInvalid}>
+            Add
+          </button>
+          <button type="button" onClick={() => {
+            setCreatingRoom(false);
+            setNewRoom('');
+          }}>
+            &times;
+          </button>
+          {roomError && (
+            <div id="create-room-error" className="error-message" role="alert" style={{ color: 'red', marginTop: 4 }}>
+              {roomError}
+            </div>
+          )}
+        </form>
+      )}
+      <ul className="room-list-items">
+        {rooms.map((r) => (
+          <li
+            key={r}
+            className={r === room ? 'active-room' : ''}
+            onClick={() => joinRoom(r)}
+            tabIndex={0}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') joinRoom(r);
+            }}
+            aria-current={r === room ? 'true' : 'false'}
+          >
+            {r}
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
 
 
 function ContactsList({contacts, users, nickname, toggleContact}) {
@@ -77,6 +138,7 @@ function App() {
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [newRoom, setNewRoom] = useState('');
   const messagesEndRef = useRef(null);
+  const [roomError, setRoomError] = useState('');
 
   const [contacts, setContacts] = useState(() => {
     try {
@@ -113,7 +175,15 @@ function App() {
       setInputName(name);
     });
     s.on('users', setUsers);
-    s.on('rooms', setRooms);
+    s.on('rooms', (newRooms) => {
+      setRooms(newRooms);
+      // Validate newRoom when rooms list updates
+      if (newRoom && newRooms.includes(newRoom.trim())) {
+        setRoomError('This room already exists.');
+      } else {
+        setRoomError('');
+      }
+    });
     s.on('joined-room', (r) => {
       // setRoom(r);
       // Clear message list for joined room only if not private chat
@@ -149,7 +219,7 @@ function App() {
     return () => {
       s.disconnect();
     };
-  }, [isPrivate]);
+  }, [isPrivate, newRoom]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -200,11 +270,16 @@ function App() {
   const handleCreateRoom = (e) => {
     e.preventDefault();
     const r = newRoom.trim();
-    if (socket && r && !rooms.includes(r)) {
+    if (socket && r) {
+      if (rooms.includes(r)) {
+        setRoomError('This room already exists.');
+        return;
+      }
       socket.emit('create-room', r);
       socket.emit('join-room', r);
       setCreatingRoom(false);
       setNewRoom('');
+      setRoomError('');
     }
   };
 
@@ -321,7 +396,7 @@ function App() {
           setCreatingRoom={setCreatingRoom}
           joinRoom={joinRoom}
           handleCreateRoom={handleCreateRoom}
-          isPrivate={isPrivate}
+          roomError={roomError}
         />
         <ContactsList
           contacts={contacts}
