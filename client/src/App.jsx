@@ -2,11 +2,41 @@
 // Extract user list section into a UserList component
 // Move inline styles to CSS classes
 
+// Add missing UserList component definition
+
 import React, { useEffect, useState, useRef } from 'react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { io } from 'socket.io-client';
 import './index.css';
+
+function UserList({users, nickname, toggleContact}) {
+  return (
+    <aside className="user-list">
+      <h4>Users ({users.length})</h4>
+      <ul>
+        {users.map((u) => {
+          const online = true; // all users here are online as live
+          return (
+            <li
+              key={u}
+              className={u === nickname ? 'me' : ''}
+              data-avatar={u.charAt(0).toUpperCase()}
+              title="Click to add/remove contact"
+              onClick={() => toggleContact(u)}
+              tabIndex={0}
+              onKeyPress={(e) => { if (e.key === 'Enter') toggleContact(u); }}
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="status-dot online" aria-hidden="true"></span>
+              {u}
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
 
 const SOCKET_URL = 'http://localhost:3001';
 const UPLOAD_URL = 'http://localhost:3001/upload';
