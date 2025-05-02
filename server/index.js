@@ -27,6 +27,11 @@ const upload = multer({
 // Static serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Add support for private messaging by nickname
+
+// Add nickname to socketId map
+const nicknameMap = new Map();
+
 let rooms = {
     'Lobby': { users: {} }
 };
@@ -79,10 +84,10 @@ io.on('connection', (socket) => {
         broadcastUsers(room);
     });
 
-    socket.on('message', (msg) => {
-        // Send only to current room
-        io.to(currentRoom).emit('message', { user: nickname, text: msg });
-    });
+socket.on('message', (msg) => {
+    const messageObject = { user: nickname, text: msg, timestamp: new Date().toISOString() };
+    io.to(currentRoom).emit('message', messageObject);
+});
 
     socket.on('set-nickname', (name) => {
         nickname = name;
